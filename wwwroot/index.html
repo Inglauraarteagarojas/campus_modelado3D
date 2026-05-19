@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -120,7 +121,10 @@
     AFRAME.registerComponent("campus-viewer", {
       init: function () {
         this.el.addEventListener("model-loaded", () => {
+          console.log("Modelo campusv2.glb cargado correctamente.");
+
           const estado = document.querySelector("#estadoModelo");
+          const pantallaCarga = document.querySelector("#pantallaCarga");
           const rig = document.querySelector("#rig");
           const camara = document.querySelector("#camaraPrincipal");
           const suelo = document.querySelector("#suelo");
@@ -130,6 +134,10 @@
           if (estado) {
             estado.textContent = "Modelo cargado correctamente.";
             estado.style.color = "#d5f5d5";
+          }
+
+          if (pantallaCarga) {
+            pantallaCarga.style.display = "none";
           }
 
           objeto.rotation.set(0, 0, 0);
@@ -144,7 +152,6 @@
           objeto.updateMatrixWorld(true);
 
           caja = new THREE.Box3().setFromObject(objeto);
-
           let tamano = caja.getSize(new THREE.Vector3());
 
           const escalaHorizontal = Math.max(
@@ -193,7 +200,6 @@
 
           const aplicarVista = (nombreVista) => {
             const vista = vistas[nombreVista];
-
             if (!vista) return;
 
             rig.setAttribute("position", vista.posicion);
@@ -211,10 +217,20 @@
           console.error("Error cargando campusv2.glb:", error);
 
           const estado = document.querySelector("#estadoModelo");
+          const pantallaCarga = document.querySelector("#pantallaCarga");
 
           if (estado) {
             estado.textContent = "Error: no cargó campusv2.glb. Revisa /api/verificar-modelo.";
             estado.style.color = "#ffb3b3";
+          }
+
+          if (pantallaCarga) {
+            pantallaCarga.innerHTML = `
+              <div class="caja-carga">
+                <strong>Error al cargar campusv2.glb</strong>
+                <span>El archivo existe, pero el navegador no pudo abrirlo. Revisa el formato, peso o consola.</span>
+              </div>
+            `;
           }
         });
       }
@@ -370,6 +386,36 @@
       font-size: 13px;
       opacity: 0.94;
     }
+
+    .pantalla-carga {
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .caja-carga {
+      background: rgba(0, 0, 0, 0.72);
+      color: white;
+      padding: 18px 24px;
+      border-radius: 16px;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .caja-carga strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .caja-carga span {
+      font-size: 14px;
+      color: #d5f5d5;
+    }
   </style>
 </head>
 
@@ -408,16 +454,19 @@
     </div>
   </div>
 
+  <div id="pantallaCarga" class="pantalla-carga">
+    <div class="caja-carga">
+      <strong>Cargando campusv2.glb...</strong>
+      <span>El modelo pesa 234 MB. Puede tardar varios minutos en Render.</span>
+    </div>
+  </div>
+
   <a-scene
     vr-mode-ui="enabled: true"
     renderer="antialias: true; colorManagement: true"
     background="color: #87CEEB"
+    loading-screen="enabled: false"
   >
-
-    <!-- Recursos -->
-    <a-assets timeout="60000">
-      <a-asset-item id="campus" src="/campusv2.glb"></a-asset-item>
-    </a-assets>
 
     <!-- Luz ambiental -->
     <a-entity light="type: ambient; intensity: 0.85"></a-entity>
@@ -441,10 +490,10 @@
       color="#6BAA75"
     ></a-plane>
 
-    <!-- Modelo 3D del campus -->
+    <!-- Modelo 3D del campus cargado directamente, sin a-assets -->
     <a-entity
       id="modeloCampus"
-      gltf-model="#campus"
+      gltf-model="url(/campusv2.glb)"
       campus-viewer
       position="0 0 0"
       rotation="0 0 0"
