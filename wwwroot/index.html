@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,7 +5,6 @@
   <title>Campus VR - C.NET</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-
   <script>
     AFRAME.registerComponent("navegacion-mouse", {
       schema: {
@@ -24,9 +22,10 @@
         this.ultimoMouseY = 0;
         this.camara = this.el.querySelector("#camaraPrincipal");
         this.escena = this.el.sceneEl;
-
         this.alPresionarMouse = (evento) => {
-          if (evento.button !== 0 && evento.button !== 2) return;
+          if (evento.button !== 0 && evento.button !== 2) {
+            return;
+          }
 
           evento.preventDefault();
           this.arrastrando = true;
@@ -36,28 +35,20 @@
         };
 
         this.alMoverMouse = (evento) => {
-          if (!this.arrastrando || !this.camara) return;
+          if (!this.arrastrando || !this.camara) {
+            return;
+          }
 
           const deltaX = evento.clientX - this.ultimoMouseX;
           const deltaY = evento.clientY - this.ultimoMouseY;
-
           this.ultimoMouseX = evento.clientX;
           this.ultimoMouseY = evento.clientY;
 
           if (this.modoArrastre === "mover") {
             const altura = Math.max(this.el.object3D.position.y, this.data.alturaMinima);
             const factor = this.data.sensibilidadArrastre * Math.max(altura / 25, 1);
-
-            const desplazamiento = new THREE.Vector3(
-              -deltaX * factor,
-              0,
-              -deltaY * factor
-            );
-
-            desplazamiento.applyAxisAngle(
-              new THREE.Vector3(0, 1, 0),
-              this.camara.object3D.rotation.y
-            );
+            const desplazamiento = new THREE.Vector3(-deltaX * factor, 0, -deltaY * factor);
+            desplazamiento.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.camara.object3D.rotation.y);
 
             this.el.object3D.position.x += desplazamiento.x;
             this.el.object3D.position.z += desplazamiento.z;
@@ -66,13 +57,11 @@
 
           if (this.modoArrastre === "rotar") {
             const rotacionActual = this.camara.getAttribute("rotation");
-
             const nuevaX = THREE.MathUtils.clamp(
               rotacionActual.x - deltaY * this.data.sensibilidadRotacion,
               -89,
               -5
             );
-
             const nuevaY = rotacionActual.y - deltaX * this.data.sensibilidadRotacion;
 
             this.camara.setAttribute("rotation", `${nuevaX} ${nuevaY} 0`);
@@ -88,7 +77,6 @@
           evento.preventDefault();
 
           const alturaActual = this.el.object3D.position.y;
-
           const nuevaAltura = THREE.MathUtils.clamp(
             alturaActual + evento.deltaY * this.data.sensibilidadZoom,
             this.data.alturaMinima,
@@ -121,24 +109,11 @@
     AFRAME.registerComponent("campus-viewer", {
       init: function () {
         this.el.addEventListener("model-loaded", () => {
-          console.log("Modelo campusv2.glb cargado correctamente.");
-
-          const estado = document.querySelector("#estadoModelo");
-          const pantallaCarga = document.querySelector("#pantallaCarga");
           const rig = document.querySelector("#rig");
           const camara = document.querySelector("#camaraPrincipal");
           const suelo = document.querySelector("#suelo");
           const objeto = this.el.object3D;
           const tamanoPiso = 200;
-
-          if (estado) {
-            estado.textContent = "Modelo cargado correctamente.";
-            estado.style.color = "#d5f5d5";
-          }
-
-          if (pantallaCarga) {
-            pantallaCarga.style.display = "none";
-          }
 
           objeto.rotation.set(0, 0, 0);
           objeto.updateMatrixWorld(true);
@@ -153,18 +128,13 @@
 
           caja = new THREE.Box3().setFromObject(objeto);
           let tamano = caja.getSize(new THREE.Vector3());
-
-          const escalaHorizontal = Math.max(
-            tamanoPiso / tamano.x,
-            tamanoPiso / tamano.z
-          );
+          const escalaHorizontal = Math.max(tamanoPiso / tamano.x, tamanoPiso / tamano.z);
 
           objeto.scale.setScalar(escalaHorizontal);
           objeto.updateMatrixWorld(true);
 
           caja = new THREE.Box3().setFromObject(objeto);
           const centroEscalado = caja.getCenter(new THREE.Vector3());
-
           objeto.position.x -= centroEscalado.x;
           objeto.position.y -= caja.min.y;
           objeto.position.z -= centroEscalado.z;
@@ -172,16 +142,12 @@
 
           caja = new THREE.Box3().setFromObject(objeto);
           tamano = caja.getSize(new THREE.Vector3());
-
           const largo = Math.max(tamano.x, tamano.z);
 
           suelo.setAttribute("width", tamanoPiso.toFixed(2));
           suelo.setAttribute("height", tamanoPiso.toFixed(2));
           suelo.setAttribute("position", "0 -0.15 0");
-          suelo.setAttribute(
-            "material",
-            "color: #6BAA75; opacity: 0; transparent: true; side: double"
-          );
+          suelo.setAttribute("material", "color: #6BAA75; opacity: 0; transparent: true; side: double");
 
           const vistas = {
             superior: {
@@ -200,7 +166,9 @@
 
           const aplicarVista = (nombreVista) => {
             const vista = vistas[nombreVista];
-            if (!vista) return;
+            if (!vista) {
+              return;
+            }
 
             rig.setAttribute("position", vista.posicion);
             camara.setAttribute("rotation", vista.rotacion);
@@ -212,27 +180,6 @@
 
           aplicarVista("superior");
         });
-
-        this.el.addEventListener("model-error", (error) => {
-          console.error("Error cargando campusv2.glb:", error);
-
-          const estado = document.querySelector("#estadoModelo");
-          const pantallaCarga = document.querySelector("#pantallaCarga");
-
-          if (estado) {
-            estado.textContent = "Error: no cargó campusv2.glb. Revisa /api/verificar-modelo.";
-            estado.style.color = "#ffb3b3";
-          }
-
-          if (pantallaCarga) {
-            pantallaCarga.innerHTML = `
-              <div class="caja-carga">
-                <strong>Error al cargar campusv2.glb</strong>
-                <span>El archivo existe, pero el navegador no pudo abrirlo. Revisa el formato, peso o consola.</span>
-              </div>
-            `;
-          }
-        });
       }
     });
 
@@ -242,39 +189,6 @@
           window.campusViewer?.aplicarVista(boton.dataset.vista);
         });
       });
-
-      const estado = document.querySelector("#estadoModelo");
-
-      fetch("/api/verificar-modelo")
-        .then((respuesta) => respuesta.json())
-        .then((data) => {
-          console.log("Verificación del modelo:", data);
-
-          if (!estado) return;
-
-          if (!data.existe) {
-            estado.textContent = "No existe campusv2.glb en Render.";
-            estado.style.color = "#ffb3b3";
-            return;
-          }
-
-          if (data.esPunteroGitLfs) {
-            estado.textContent = "Render tiene solo el puntero Git LFS, no el GLB real.";
-            estado.style.color = "#ffb3b3";
-            return;
-          }
-
-          estado.textContent = `Modelo encontrado: ${data.pesoMB} MB. Cargando escena...`;
-          estado.style.color = "#d5f5d5";
-        })
-        .catch((error) => {
-          console.warn("No se pudo verificar el modelo:", error);
-
-          if (estado) {
-            estado.textContent = "No se pudo consultar /api/verificar-modelo. Se intentará cargar.";
-            estado.style.color = "#fff3b0";
-          }
-        });
     });
   </script>
 
@@ -290,7 +204,7 @@
       top: 15px;
       left: 20px;
       z-index: 10;
-      background: rgba(0, 0, 0, 0.72);
+      background: rgba(0, 0, 0, 0.65);
       color: white;
       padding: 12px 16px;
       border-radius: 12px;
@@ -325,25 +239,18 @@
       opacity: 0.88;
     }
 
-    .estado-modelo {
-      margin-top: 5px;
-      font-size: 12px;
-      color: #fff3b0;
-    }
-
     .panel-controles {
       position: fixed;
       right: 20px;
       top: 15px;
       z-index: 10;
-      width: 290px;
-      background: rgba(0, 0, 0, 0.72);
+      width: 280px;
+      background: rgba(0, 0, 0, 0.65);
       color: white;
       padding: 14px 16px;
       border-radius: 12px;
       font-size: 14px;
       line-height: 1.45;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
     }
 
     .botones-vista {
@@ -363,10 +270,6 @@
       cursor: pointer;
     }
 
-    .botones-vista button:hover {
-      background: #bde7c5;
-    }
-
     .boton-externo {
       display: inline-flex;
       align-items: center;
@@ -381,52 +284,16 @@
       font-weight: 700;
       box-sizing: border-box;
     }
-
-    .instrucciones {
-      font-size: 13px;
-      opacity: 0.94;
-    }
-
-    .pantalla-carga {
-      position: fixed;
-      inset: 0;
-      z-index: 8;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-    }
-
-    .caja-carga {
-      background: rgba(0, 0, 0, 0.72);
-      color: white;
-      padding: 18px 24px;
-      border-radius: 16px;
-      text-align: center;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-    }
-
-    .caja-carga strong {
-      display: block;
-      font-size: 18px;
-      margin-bottom: 8px;
-    }
-
-    .caja-carga span {
-      font-size: 14px;
-      color: #d5f5d5;
-    }
   </style>
 </head>
 
 <body>
 
   <div class="encabezado">
-    <img class="encabezado-logo" src="/logo.png" alt="Logo Campus VR" />
+    <img class="encabezado-logo" src="logo.png" alt="Logo Campus VR" />
     <div class="encabezado-texto">
       <strong>Campus VR</strong>
       <span>Modelo 3D campusv2.glb</span>
-      <div id="estadoModelo" class="estado-modelo">Verificando modelo...</div>
     </div>
   </div>
 
@@ -436,51 +303,40 @@
       <button type="button" data-vista="frontal">Vista frontal</button>
       <button type="button" data-vista="lateral">Vista lateral</button>
     </div>
-
     <a
       class="boton-externo"
       href="https://flask-tree-counter-3.onrender.com/"
       target="_blank"
       rel="noopener noreferrer"
     >
-      Conteo de árboles
+      Conteo de arboles
     </a>
-
-    <div class="instrucciones">
-      <div>Clic izquierdo y arrastrar: mover escenario</div>
-      <div>Clic derecho y arrastrar: girar vista</div>
-      <div>Rueda del mouse: acercar y alejar</div>
-      <div>Botón VR: entrar al entorno de realidad virtual</div>
-    </div>
-  </div>
-
-  <div id="pantallaCarga" class="pantalla-carga">
-    <div class="caja-carga">
-      <strong>Cargando campusv2.glb...</strong>
-      <span>El modelo pesa 234 MB. Puede tardar varios minutos en Render.</span>
-    </div>
+    <div>Clic izquierdo y arrastrar: mover escenario</div>
+    <div>Clic derecho y arrastrar: girar vista</div>
+    <div>Rueda del mouse: acercar y alejar</div>
   </div>
 
   <a-scene
     vr-mode-ui="enabled: true"
     renderer="antialias: true; colorManagement: true"
     background="color: #87CEEB"
-    loading-screen="enabled: false"
   >
 
+    <!-- Recursos -->
+    <a-assets>
+      <a-asset-item id="campus" src="campusv2.glb"></a-asset-item>
+    </a-assets>
+
     <!-- Luz ambiental -->
-    <a-entity light="type: ambient; intensity: 0.85"></a-entity>
+    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
 
     <!-- Luz direccional tipo sol -->
     <a-entity
-      light="type: directional; intensity: 1.25"
+      light="type: directional; intensity: 1.2"
       position="5 10 5"
     ></a-entity>
 
-    <!-- Cielo -->
-    <a-sky color="#87CEEB"></a-sky>
-
-    <!-- Suelo transparente para referencia -->
+    <!-- Suelo -->
     <a-plane
       id="suelo"
       position="0 0 0"
@@ -490,10 +346,10 @@
       color="#6BAA75"
     ></a-plane>
 
-    <!-- Modelo 3D del campus cargado directamente, sin a-assets -->
+    <!-- Modelo 3D del campus -->
     <a-entity
       id="modeloCampus"
-      gltf-model="url(/campusv2.glb)"
+      gltf-model="#campus"
       campus-viewer
       position="0 0 0"
       rotation="0 0 0"
