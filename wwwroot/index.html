@@ -4,49 +4,408 @@
   <meta charset="UTF-8" />
   <title>Campus VR - C.NET</title>
 
-  <!-- A-Frame para realidad virtual WebXR -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <script>
+    AFRAME.registerComponent("navegacion-mouse", {
+      schema: {
+        sensibilidadArrastre: { default: 0.3 },
+        sensibilidadRotacion: { default: 0.18 },
+        sensibilidadZoom: { default: 0.06 },
+        alturaMinima: { default: 8 },
+        alturaMaxima: { default: 220 }
+      },
+
+      init: function () {
+        this.arrastrando = false;
+        this.modoArrastre = null;
+        this.ultimoMouseX = 0;
+        this.ultimoMouseY = 0;
+        this.camara = this.el.querySelector("#camaraPrincipal");
+        this.escena = this.el.sceneEl;
+
+        this.alPresionarMouse = (evento) => {
+          if (evento.button !== 0 && evento.button !== 2) return;
+
+          evento.preventDefault();
+          this.arrastrando = true;
+          this.modoArrastre = evento.button === 2 ? "rotar" : "mover";
+          this.ultimoMouseX = evento.clientX;
+          this.ultimoMouseY = evento.clientY;
+        };
+
+        this.alMoverMouse = (evento) => {
+          if (!this.arrastrando || !this.camara) return;
+
+          const deltaX = evento.clientX - this.ultimoMouseX;
+          const deltaY = evento.clientY - this.ultimoMouseY;
+
+          this.ultimoMouseX = evento.clientX;
+          this.ultimoMouseY = evento.clientY;
+
+          if (this.modoArrastre === "mover") {
+            const altura = Math.max(this.el.object3D.position.y, this.data.alturaMinima);
+            const factor = this.data.sensibilidadArrastre * Math.max(altura / 25, 1);
+
+            const desplazamiento = new THREE.Vector3(
+              -deltaX * factor,
+              0,
+              -deltaY * factor
+            );
+
+            desplazamiento.applyAxisAngle(
+              new THREE.Vector3(0, 1, 0),
+              this.camara.object3D.rotation.y
+            );
+
+            this.el.object3D.position.x += desplazamiento.x;
+            this.el.object3D.position.z += desplazamiento.z;
+            return;
+          }
+
+          if (this.modoArrastre === "rotar") {
+            const rotacionActual = this.camara.getAttribute("rotation");
+
+            const nuevaX = THREE.MathUtils.clamp(
+              rotacionActual.x - deltaY * this.data.sensibilidadRotacion,
+              -89,
+              -5
+            );
+
+            const nuevaY = rotacionActual.y - deltaX * this.data.sensibilidadRotacion;
+
+            this.camara.setAttribute("rotation", `${nuevaX} ${nuevaY} 0`);
+          }
+        };
+
+        this.alSoltarMouse = () => {
+          this.arrastrando = false;
+          this.modoArrastre = null;
+        };
+
+        this.alRueda = (evento) => {
+          evento.preventDefault();
+
+          const alturaActual = this.el.object3D.position.y;
+
+          const nuevaAltura = THREE.MathUtils.clamp(
+            alturaActual + evento.deltaY * this.data.sensibilidadZoom,
+            this.data.alturaMinima,
+            this.data.alturaMaxima
+          );
+
+          this.el.object3D.position.y = nuevaAltura;
+        };
+
+        this.alMenuContextual = (evento) => {
+          evento.preventDefault();
+        };
+
+        this.escena.addEventListener("mousedown", this.alPresionarMouse);
+        window.addEventListener("mousemove", this.alMoverMouse);
+        window.addEventListener("mouseup", this.alSoltarMouse);
+        this.escena.addEventListener("wheel", this.alRueda, { passive: false });
+        this.escena.addEventListener("contextmenu", this.alMenuContextual);
+      },
+
+      remove: function () {
+        this.escena.removeEventListener("mousedown", this.alPresionarMouse);
+        window.removeEventListener("mousemove", this.alMoverMouse);
+        window.removeEventListener("mouseup", this.alSoltarMouse);
+        this.escena.removeEventListener("wheel", this.alRueda);
+        this.escena.removeEventListener("contextmenu", this.alMenuContextual);
+      }
+    });
+
+    AFRAME.registerComponent("campus-viewer", {
+      init: function () {
+        this.el.addEventListener("model-loaded", () => {
+          const estado = document.querySelector("#estadoModelo");
+          const rig = document.querySelector("#rig");
+          const camara = document.querySelector("#camaraPrincipal");
+          const suelo = document.querySelector("#suelo");
+          const objeto = this.el.object3D;
+          const tamanoPiso = 200;
+
+          if (estado) {
+            estado.textContent = "Modelo cargado correctamente.";
+            estado.style.color = "#d5f5d5";
+          }
+
+          objeto.rotation.set(0, 0, 0);
+          objeto.updateMatrixWorld(true);
+
+          let caja = new THREE.Box3().setFromObject(objeto);
+          const centro = caja.getCenter(new THREE.Vector3());
+
+          objeto.position.x -= centro.x;
+          objeto.position.y -= caja.min.y;
+          objeto.position.z -= centro.z;
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+
+          let tamano = caja.getSize(new THREE.Vector3());
+
+          const escalaHorizontal = Math.max(
+            tamanoPiso / tamano.x,
+            tamanoPiso / tamano.z
+          );
+
+          objeto.scale.setScalar(escalaHorizontal);
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+          const centroEscalado = caja.getCenter(new THREE.Vector3());
+
+          objeto.position.x -= centroEscalado.x;
+          objeto.position.y -= caja.min.y;
+          objeto.position.z -= centroEscalado.z;
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+          tamano = caja.getSize(new THREE.Vector3());
+
+          const largo = Math.max(tamano.x, tamano.z);
+
+          suelo.setAttribute("width", tamanoPiso.toFixed(2));
+          suelo.setAttribute("height", tamanoPiso.toFixed(2));
+          suelo.setAttribute("position", "0 -0.15 0");
+          suelo.setAttribute(
+            "material",
+            "color: #6BAA75; opacity: 0; transparent: true; side: double"
+          );
+
+          const vistas = {
+            superior: {
+              posicion: `0 ${(Math.max(largo * 0.78, tamano.y + 30)).toFixed(2)} 0.01`,
+              rotacion: "-90 0 0"
+            },
+            frontal: {
+              posicion: `0 ${(Math.max(tamano.y * 0.55, 10)).toFixed(2)} ${(largo * 0.92).toFixed(2)}`,
+              rotacion: "-18 0 0"
+            },
+            lateral: {
+              posicion: `${(largo * 0.92).toFixed(2)} ${(Math.max(tamano.y * 0.55, 10)).toFixed(2)} 0`,
+              rotacion: "-18 90 0"
+            }
+          };
+
+          const aplicarVista = (nombreVista) => {
+            const vista = vistas[nombreVista];
+
+            if (!vista) return;
+
+            rig.setAttribute("position", vista.posicion);
+            camara.setAttribute("rotation", vista.rotacion);
+          };
+
+          window.campusViewer = {
+            aplicarVista
+          };
+
+          aplicarVista("superior");
+        });
+
+        this.el.addEventListener("model-error", (error) => {
+          console.error("Error cargando campusv2.glb:", error);
+
+          const estado = document.querySelector("#estadoModelo");
+
+          if (estado) {
+            estado.textContent = "Error: no cargó campusv2.glb. Revisa /api/verificar-modelo.";
+            estado.style.color = "#ffb3b3";
+          }
+        });
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll("[data-vista]").forEach((boton) => {
+        boton.addEventListener("click", () => {
+          window.campusViewer?.aplicarVista(boton.dataset.vista);
+        });
+      });
+
+      const estado = document.querySelector("#estadoModelo");
+
+      fetch("/api/verificar-modelo")
+        .then((respuesta) => respuesta.json())
+        .then((data) => {
+          console.log("Verificación del modelo:", data);
+
+          if (!estado) return;
+
+          if (!data.existe) {
+            estado.textContent = "No existe campusv2.glb en Render.";
+            estado.style.color = "#ffb3b3";
+            return;
+          }
+
+          if (data.esPunteroGitLfs) {
+            estado.textContent = "Render tiene solo el puntero Git LFS, no el GLB real.";
+            estado.style.color = "#ffb3b3";
+            return;
+          }
+
+          estado.textContent = `Modelo encontrado: ${data.pesoMB} MB. Cargando escena...`;
+          estado.style.color = "#d5f5d5";
+        })
+        .catch((error) => {
+          console.warn("No se pudo verificar el modelo:", error);
+
+          if (estado) {
+            estado.textContent = "No se pudo consultar /api/verificar-modelo. Se intentará cargar.";
+            estado.style.color = "#fff3b0";
+          }
+        });
+    });
+  </script>
 
   <style>
     body {
       margin: 0;
       overflow: hidden;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: Arial, sans-serif;
     }
 
-    .panel-info {
+    .encabezado {
       position: fixed;
       top: 15px;
-      left: 15px;
+      left: 20px;
       z-index: 10;
       background: rgba(0, 0, 0, 0.72);
       color: white;
-      padding: 14px 18px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.4;
-      max-width: 340px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
     }
 
-    .panel-info strong {
-      color: #8fd3ff;
+    .encabezado-logo {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 10px;
+      padding: 6px;
     }
 
-    .estado {
-      margin-top: 6px;
+    .encabezado-texto {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .encabezado-texto strong {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .encabezado-texto span {
       font-size: 13px;
-      color: #d5f5d5;
+      opacity: 0.88;
+    }
+
+    .estado-modelo {
+      margin-top: 5px;
+      font-size: 12px;
+      color: #fff3b0;
+    }
+
+    .panel-controles {
+      position: fixed;
+      right: 20px;
+      top: 15px;
+      z-index: 10;
+      width: 290px;
+      background: rgba(0, 0, 0, 0.72);
+      color: white;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.45;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .botones-vista {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .botones-vista button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #d7f0dc;
+      color: #16351b;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .botones-vista button:hover {
+      background: #bde7c5;
+    }
+
+    .boton-externo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      margin: 8px 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #ffe9a8;
+      color: #3d2e00;
+      text-decoration: none;
+      font-weight: 700;
+      box-sizing: border-box;
+    }
+
+    .instrucciones {
+      font-size: 13px;
+      opacity: 0.94;
     }
   </style>
 </head>
 
 <body>
 
-  <div class="panel-info">
-    <strong>Campus VR - C.NET</strong><br>
-    Modelo: campusv2.glb<br>
-    Entorno: Realidad Virtual WebXR<br>
-    <div id="estadoModelo" class="estado">Cargando modelo 3D...</div>
+  <div class="encabezado">
+    <img class="encabezado-logo" src="/logo.png" alt="Logo Campus VR" />
+    <div class="encabezado-texto">
+      <strong>Campus VR</strong>
+      <span>Modelo 3D campusv2.glb</span>
+      <div id="estadoModelo" class="estado-modelo">Verificando modelo...</div>
+    </div>
+  </div>
+
+  <div class="panel-controles">
+    <div class="botones-vista">
+      <button type="button" data-vista="superior">Vista superior</button>
+      <button type="button" data-vista="frontal">Vista frontal</button>
+      <button type="button" data-vista="lateral">Vista lateral</button>
+    </div>
+
+    <a
+      class="boton-externo"
+      href="https://flask-tree-counter-3.onrender.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Conteo de árboles
+    </a>
+
+    <div class="instrucciones">
+      <div>Clic izquierdo y arrastrar: mover escenario</div>
+      <div>Clic derecho y arrastrar: girar vista</div>
+      <div>Rueda del mouse: acercar y alejar</div>
+      <div>Botón VR: entrar al entorno de realidad virtual</div>
+    </div>
   </div>
 
   <a-scene
@@ -60,114 +419,59 @@
       <a-asset-item id="campus" src="/campusv2.glb"></a-asset-item>
     </a-assets>
 
-    <!-- Luces -->
-    <a-entity light="type: ambient; intensity: 0.9"></a-entity>
+    <!-- Luz ambiental -->
+    <a-entity light="type: ambient; intensity: 0.85"></a-entity>
 
+    <!-- Luz direccional tipo sol -->
     <a-entity
-      light="type: directional; intensity: 1.3"
-      position="8 12 8"
+      light="type: directional; intensity: 1.25"
+      position="5 10 5"
     ></a-entity>
 
     <!-- Cielo -->
     <a-sky color="#87CEEB"></a-sky>
 
-    <!-- Suelo base -->
+    <!-- Suelo transparente para referencia -->
     <a-plane
-      position="0 -0.02 0"
+      id="suelo"
+      position="0 0 0"
       rotation="-90 0 0"
-      width="300"
-      height="300"
+      width="200"
+      height="200"
       color="#6BAA75"
-      shadow="receive: true"
     ></a-plane>
 
     <!-- Modelo 3D del campus -->
     <a-entity
       id="modeloCampus"
       gltf-model="#campus"
-      position="0 0 -6"
+      campus-viewer
+      position="0 0 0"
       rotation="0 0 0"
       scale="1 1 1"
-      shadow="cast: true; receive: true"
     ></a-entity>
 
-    <!-- Título dentro del entorno -->
+    <!-- Texto dentro del entorno -->
     <a-text
-      value="Campus VR - Modelo 3D"
+      value="Campus VR - C.NET"
       position="-3 3 -5"
       color="#ffffff"
-      width="7"
+      width="6"
       align="center"
     ></a-text>
 
-    <!-- Punto de referencia -->
-    <a-box
-      position="0 0.5 -3"
-      width="0.3"
-      height="1"
-      depth="0.3"
-      color="#ffcc00"
-    ></a-box>
-
-    <!-- Cámara y movimiento -->
-    <a-entity id="rig" position="0 1.6 5">
+    <!-- Cámara con movimiento -->
+    <a-entity id="rig" position="0 25 0.01" navegacion-mouse>
       <a-camera
-        wasd-controls="enabled: true; acceleration: 25"
-        look-controls="enabled: true"
-        cursor="rayOrigin: mouse"
-      >
-        <a-cursor
-          color="#ffffff"
-          fuse="false"
-        ></a-cursor>
-      </a-camera>
+        id="camaraPrincipal"
+        camera="far: 5000"
+        rotation="-90 0 0"
+        wasd-controls="enabled: false"
+        look-controls="enabled: false"
+      ></a-camera>
     </a-entity>
 
   </a-scene>
-
-  <script>
-    const estado = document.getElementById("estadoModelo");
-    const modelo = document.querySelector("#modeloCampus");
-
-    modelo.addEventListener("model-loaded", () => {
-      console.log("Modelo campusv2.glb cargado correctamente");
-      estado.textContent = "Modelo cargado correctamente.";
-      estado.style.color = "#d5f5d5";
-    });
-
-    modelo.addEventListener("model-error", (error) => {
-      console.error("Error cargando campusv2.glb:", error);
-      estado.textContent = "Error: no cargó campusv2.glb. Revisar /api/verificar-modelo";
-      estado.style.color = "#ffb3b3";
-      alert("No cargó campusv2.glb. Abre /api/verificar-modelo en Render para revisar si el archivo está completo.");
-    });
-
-    fetch("/api/verificar-modelo")
-      .then(response => response.json())
-      .then(data => {
-        console.log("Verificación del modelo:", data);
-
-        if (!data.existe) {
-          estado.textContent = "El archivo campusv2.glb no existe en Render.";
-          estado.style.color = "#ffb3b3";
-          return;
-        }
-
-        if (data.esPunteroGitLfs) {
-          estado.textContent = "Render tiene solo el puntero Git LFS, no el GLB real.";
-          estado.style.color = "#ffb3b3";
-          return;
-        }
-
-        estado.textContent = "Modelo encontrado en servidor: " + data.pesoMB + " MB";
-        estado.style.color = "#d5f5d5";
-      })
-      .catch(error => {
-        console.warn("No se pudo consultar /api/verificar-modelo:", error);
-        estado.textContent = "No se pudo verificar el modelo, pero se intentará cargar.";
-        estado.style.color = "#fff3b0";
-      });
-  </script>
 
 </body>
 </html>
