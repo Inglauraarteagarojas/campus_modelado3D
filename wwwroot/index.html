@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Campus VR - C.NET</title>
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script>
+    AFRAME.registerComponent("navegacion-mouse", {
+      schema: {
+        sensibilidadArrastre: { default: 0.3 },
+        sensibilidadRotacion: { default: 0.18 },
+        sensibilidadZoom: { default: 0.06 },
+        alturaMinima: { default: 8 },
+        alturaMaxima: { default: 220 }
+      },
+
+      init: function () {
+        this.arrastrando = false;
+        this.modoArrastre = null;
+        this.ultimoMouseX = 0;
+        this.ultimoMouseY = 0;
+        this.camara = this.el.querySelector("#camaraPrincipal");
+        this.escena = this.el.sceneEl;
+        this.alPresionarMouse = (evento) => {
+          if (evento.button !== 0 && evento.button !== 2) {
+            return;
+          }
+
+          evento.preventDefault();
+          this.arrastrando = true;
+          this.modoArrastre = evento.button === 2 ? "rotar" : "mover";
+          this.ultimoMouseX = evento.clientX;
+          this.ultimoMouseY = evento.clientY;
+        };
+
+        this.alMoverMouse = (evento) => {
+          if (!this.arrastrando || !this.camara) {
+            return;
+          }
+
+          const deltaX = evento.clientX - this.ultimoMouseX;
+          const deltaY = evento.clientY - this.ultimoMouseY;
+          this.ultimoMouseX = evento.clientX;
+          this.ultimoMouseY = evento.clientY;
+
+          if (this.modoArrastre === "mover") {
+            const altura = Math.max(this.el.object3D.position.y, this.data.alturaMinima);
+            const factor = this.data.sensibilidadArrastre * Math.max(altura / 25, 1);
+            const desplazamiento = new THREE.Vector3(-deltaX * factor, 0, -deltaY * factor);
+            desplazamiento.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.camara.object3D.rotation.y);
+
+            this.el.object3D.position.x += desplazamiento.x;
+            this.el.object3D.position.z += desplazamiento.z;
+            return;
+          }
+
+          if (this.modoArrastre === "rotar") {
+            const rotacionActual = this.camara.getAttribute("rotation");
+            const nuevaX = THREE.MathUtils.clamp(
+              rotacionActual.x - deltaY * this.data.sensibilidadRotacion,
+              -89,
+              -5
+            );
+            const nuevaY = rotacionActual.y - deltaX * this.data.sensibilidadRotacion;
+
+            this.camara.setAttribute("rotation", `${nuevaX} ${nuevaY} 0`);
+          }
+        };
+
+        this.alSoltarMouse = () => {
+          this.arrastrando = false;
+          this.modoArrastre = null;
+        };
+
+        this.alRueda = (evento) => {
+          evento.preventDefault();
+
+          const alturaActual = this.el.object3D.position.y;
+          const nuevaAltura = THREE.MathUtils.clamp(
+            alturaActual + evento.deltaY * this.data.sensibilidadZoom,
+            this.data.alturaMinima,
+            this.data.alturaMaxima
+          );
+
+          this.el.object3D.position.y = nuevaAltura;
+        };
+
+        this.alMenuContextual = (evento) => {
+          evento.preventDefault();
+        };
+
+        this.escena.addEventListener("mousedown", this.alPresionarMouse);
+        window.addEventListener("mousemove", this.alMoverMouse);
+        window.addEventListener("mouseup", this.alSoltarMouse);
+        this.escena.addEventListener("wheel", this.alRueda, { passive: false });
+        this.escena.addEventListener("contextmenu", this.alMenuContextual);
+      },
+
+      remove: function () {
+        this.escena.removeEventListener("mousedown", this.alPresionarMouse);
+        window.removeEventListener("mousemove", this.alMoverMouse);
+        window.removeEventListener("mouseup", this.alSoltarMouse);
+        this.escena.removeEventListener("wheel", this.alRueda);
+        this.escena.removeEventListener("contextmenu", this.alMenuContextual);
+      }
+    });
+
+    AFRAME.registerComponent("campus-viewer", {
+      init: function () {
+        this.el.addEventListener("model-loaded", () => {
+          const rig = document.querySelector("#rig");
+          const camara = document.querySelector("#camaraPrincipal");
+          const suelo = document.querySelector("#suelo");
+          const objeto = this.el.object3D;
+          const tamanoPiso = 200;
+
+          objeto.rotation.set(0, 0, 0);
+          objeto.updateMatrixWorld(true);
+
+          let caja = new THREE.Box3().setFromObject(objeto);
+          const centro = caja.getCenter(new THREE.Vector3());
+
+          objeto.position.x -= centro.x;
+          objeto.position.y -= caja.min.y;
+          objeto.position.z -= centro.z;
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+          let tamano = caja.getSize(new THREE.Vector3());
+          const escalaHorizontal = Math.max(tamanoPiso / tamano.x, tamanoPiso / tamano.z);
+
+          objeto.scale.setScalar(escalaHorizontal);
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+          const centroEscalado = caja.getCenter(new THREE.Vector3());
+          objeto.position.x -= centroEscalado.x;
+          objeto.position.y -= caja.min.y;
+          objeto.position.z -= centroEscalado.z;
+          objeto.updateMatrixWorld(true);
+
+          caja = new THREE.Box3().setFromObject(objeto);
+          tamano = caja.getSize(new THREE.Vector3());
+          const largo = Math.max(tamano.x, tamano.z);
+
+          suelo.setAttribute("width", tamanoPiso.toFixed(2));
+          suelo.setAttribute("height", tamanoPiso.toFixed(2));
+          suelo.setAttribute("position", "0 -0.15 0");
+          suelo.setAttribute("material", "color: #6BAA75; opacity: 0; transparent: true; side: double");
+
+          const vistas = {
+            superior: {
+              posicion: `0 ${(Math.max(largo * 0.78, tamano.y + 30)).toFixed(2)} 0.01`,
+              rotacion: "-90 0 0"
+            },
+            frontal: {
+              posicion: `0 ${(Math.max(tamano.y * 0.55, 10)).toFixed(2)} ${(largo * 0.92).toFixed(2)}`,
+              rotacion: "-18 0 0"
+            },
+            lateral: {
+              posicion: `${(largo * 0.92).toFixed(2)} ${(Math.max(tamano.y * 0.55, 10)).toFixed(2)} 0`,
+              rotacion: "-18 90 0"
+            }
+          };
+
+          const aplicarVista = (nombreVista) => {
+            const vista = vistas[nombreVista];
+            if (!vista) {
+              return;
+            }
+
+            rig.setAttribute("position", vista.posicion);
+            camara.setAttribute("rotation", vista.rotacion);
+          };
+
+          window.campusViewer = {
+            aplicarVista
+          };
+
+          aplicarVista("superior");
+        });
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll("[data-vista]").forEach((boton) => {
+        boton.addEventListener("click", () => {
+          window.campusViewer?.aplicarVista(boton.dataset.vista);
+        });
+      });
+    });
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    .encabezado {
+      position: fixed;
+      top: 15px;
+      left: 20px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .encabezado-logo {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 10px;
+      padding: 6px;
+    }
+
+    .encabezado-texto {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .encabezado-texto strong {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .encabezado-texto span {
+      font-size: 13px;
+      opacity: 0.88;
+    }
+
+    .panel-controles {
+      position: fixed;
+      right: 20px;
+      top: 15px;
+      z-index: 10;
+      width: 280px;
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .botones-vista {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .botones-vista button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #d7f0dc;
+      color: #16351b;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .boton-externo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      margin: 8px 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #ffe9a8;
+      color: #3d2e00;
+      text-decoration: none;
+      font-weight: 700;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="encabezado">
+    <img class="encabezado-logo" src="logo.png" alt="Logo Campus VR" />
+    <div class="encabezado-texto">
+      <strong>Campus VR</strong>
+      <span>Modelo 3D campusv2.glb</span>
+    </div>
+  </div>
+
+  <div class="panel-controles">
+    <div class="botones-vista">
+      <button type="button" data-vista="superior">Vista superior</button>
+      <button type="button" data-vista="frontal">Vista frontal</button>
+      <button type="button" data-vista="lateral">Vista lateral</button>
+    </div>
+    <a
+      class="boton-externo"
+      href="https://flask-tree-counter-3.onrender.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Conteo de arboles
+    </a>
+    <div>Clic izquierdo y arrastrar: mover escenario</div>
+    <div>Clic derecho y arrastrar: girar vista</div>
+    <div>Rueda del mouse: acercar y alejar</div>
+  </div>
+
+  <a-scene
+    vr-mode-ui="enabled: true"
+    renderer="antialias: true; colorManagement: true"
+    background="color: #87CEEB"
+  >
+
+    <!-- Recursos -->
+    <a-assets>
+      <a-asset-item id="campus" src="campusv2.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- Luz ambiental -->
+    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
+
+    <!-- Luz direccional tipo sol -->
+    <a-entity
+      light="type: directional; intensity: 1.2"
+      position="5 10 5"
+    ></a-entity>
+
+    <!-- Suelo -->
+    <a-plane
+      id="suelo"
+      position="0 0 0"
+      rotation="-90 0 0"
+      width="200"
+      height="200"
+      color="#6BAA75"
+    ></a-plane>
+
+    <!-- Modelo 3D del campus -->
+    <a-entity
+      id="modeloCampus"
+      gltf-model="#campus"
+      campus-viewer
+      position="0 0 0"
+      rotation="0 0 0"
+      scale="1 1 1"
+    ></a-entity>
+
+    <!-- Texto dentro del entorno -->
+    <a-text
+      value="Campus VR - C.NET"
+      position="-3 3 -5"
+      color="#ffffff"
+      width="6"
+      align="center"
+    ></a-text>
+
+    <!-- Cámara con movimiento -->
+    <a-entity id="rig" position="0 25 0.01" navegacion-mouse>
+      <a-camera
+        id="camaraPrincipal"
+        camera="far: 5000"
+        rotation="-90 0 0"
+        wasd-controls="enabled: false"
+        look-controls="enabled: false"
+      ></a-camera>
+    </a-entity>
+
+  </a-scene>
+
+</body>
+</html>
